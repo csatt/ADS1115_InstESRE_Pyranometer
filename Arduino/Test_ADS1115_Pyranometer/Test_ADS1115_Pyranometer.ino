@@ -49,7 +49,7 @@
 
 // Test behavior constants (may be modified)
 #define SERIAL_BAUD 57600               // Serial port baud rate
-#define CSV_OUTPUT true                // Set to true for CSV
+#define CSV_OUTPUT false                // Set to true for CSV
 #define IRRADIANCE_POLLING_LOOPS 10
 #define TEMP_POLLING_LOOPS 5
 #define REQUIRE_STABLE_TEMP true
