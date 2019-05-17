@@ -50,6 +50,7 @@
 // Test behavior constants (may be modified)
 #define SERIAL_BAUD 57600               // Serial port baud rate
 #define CSV_OUTPUT false                // Set to true for CSV
+#define CSV_MV_ONLY false               // Set to true for mV only in CSV
 #define IRRADIANCE_POLLING_LOOPS 10
 #define TEMP_POLLING_LOOPS 5
 #define REQUIRE_STABLE_TEMP true
@@ -70,11 +71,10 @@
 #define TMP36_MV_PER_DEG_C 10           // from datasheet
 
 // Calibration constants (may be modified)
-#define PYRANO_CAL 4.2572               // W/m^2/mV
+#define PYRANO_CAL 4.3                // X coefficient (slope if A=0): W/m^2/mV
+#define PYRANO_CAL_A 0.0              // X^2 coefficient: W/m^2/mV^2
 #define PHOTODIODE_NOMINAL_DEG_C 25.0
-#define PHOTODIODE_PCT_PER_DEG_C 0.27   // determined empirically
-#define PHOTODIODE_NOMINAL_MV 188       // determined empirically
-#define PHOTODIODE_ADJ_PPM 700          // determined empirically
+#define PHOTODIODE_PCT_PER_DEG_C 0.16 // determined empirically, YMMV
 
 Adafruit_ADS1115 ads1115;
 
@@ -96,23 +96,15 @@ void setup()
     Serial.println(
       F(""));
     Serial.println(
-      F("      Irradiance: <1> W/m^2 @ <2> deg C   (<3> / <4> / <5>)"));
+      F("      Irradiance: <1> W/m^2 @ <2> deg C   (<3>)"));
     Serial.println(
       F(""));
     Serial.println(
-      F("          <1>:  irradiance with both TEMPERATURE and "));
-    Serial.println(
-      F("                NON-LINEARITY adjustments"));
+      F("          <1>:  irradiance WITH temperature adjustment"));
     Serial.println(
       F("          <2>:  TMP36 temperature"));
     Serial.println(
-      F("          <3>:  irradiance with neither TEMPERATURE nor "));
-    Serial.println(
-      F("                NON-LINEARITY adjustments"));
-    Serial.println(
-      F("          <4>:  irradiance with NON-LINEARITY adjustment only"));
-    Serial.println(
-      F("          <5>:  irradiance with TEMPERATURE adjustment only"));
+      F("          <3>:  irradiance WITHOUT temperature adjustment"));
     Serial.println(
       F(""));
     Serial.println(
@@ -120,13 +112,11 @@ void setup()
     Serial.println(
       F(""));
     Serial.println(
-      F("      Irradiance: <1> W/m^2 @   (<2>)"));
+      F("      Irradiance: <1> W/m^2"));
     Serial.println(
       F(""));
     Serial.println(
-      F("          <1>:  irradiance with NON-LINEARITY adjustment"));
-    Serial.println(
-      F("          <2>:  irradiance without NON-LINEARITY adjustment"));
+      F("          <1>:  irradiance WITHOUT temperature adjustment"));
     Serial.println(
       F("------------------------------------------------------------------"));
     Serial.println(F(""));
@@ -259,27 +249,15 @@ void loop()
 void print_results(float photodiode_temp, long ads1115_val) {
   Serial.print(F("Irradiance: "));
   if (photodiode_temp != INVALID_TEMP) {
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   true, true));
+    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, true));
     Serial.print(F(" W/m^2 @ "));
     Serial.print(photodiode_temp);
     Serial.print(F(" deg C   ("));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, false));
-    Serial.print(F(" / "));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, true));
-    Serial.print(F(" / "));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   true, false));
+    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, false));
     Serial.println(F(")"));
   } else {
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, true));
-    Serial.print(F(" W/m^2   ("));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, false));
-    Serial.println(F(")"));
+    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, false));
+    Serial.println(F(" W/m^2"));
   }
 }
 
@@ -287,23 +265,19 @@ void print_results_csv(float photodiode_temp, long ads1115_val) {
   if (photodiode_temp != INVALID_TEMP) {
     Serial.print(photodiode_temp);
     Serial.print(F(","));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   true, true));
-    Serial.print(F(","));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, false));
-    Serial.print(F(","));
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, true));
-    Serial.print(F(","));
-    Serial.println(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   true, false));
+    if (CSV_MV_ONLY) {
+      Serial.println(convert_ads1115_val_to_millivolts(ads1115_val));
+    } else {
+      Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, true));
+      Serial.print(F(","));
+      Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, false));
+    }
   } else {
-    Serial.print(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, true));
-    Serial.print(F(","));
-    Serial.println(convert_ads1115_val_to_irradiance(ads1115_val,
-                                                   false, false));
+    if (CSV_MV_ONLY) {
+      Serial.println(convert_ads1115_val_to_millivolts(ads1115_val));
+    } else {
+      Serial.print(convert_ads1115_val_to_irradiance(ads1115_val, false));
+    }
   }
 }
 
@@ -335,8 +309,7 @@ float convert_ads1115_val_to_deg_c(int16_t ads1115_val) {
   return deg_c;
 }
 
-float convert_ads1115_val_to_irradiance(int16_t ads1115_val,
-                                        bool temp_comp, bool adjust) {
+float convert_ads1115_val_to_irradiance(int16_t ads1115_val, bool temp_comp) {
   int max_millivolts;
   float photodiode_millivolts;
   float temp_scaling;
@@ -345,10 +318,7 @@ float convert_ads1115_val_to_irradiance(int16_t ads1115_val,
   float w_per_m_squared;
 
   // First convert reading value to millivolts
-  max_millivolts = (ADS1115_UNITY_GAIN_MAX_MILLIVOLTS /
-                    ADS1115_PGA_GAIN_PDB_C139);
-  photodiode_millivolts =
-    max_millivolts * (float(abs(ads1115_val)) / ADS1115_MIN_VALUE);
+  photodiode_millivolts = convert_ads1115_val_to_millivolts(ads1115_val);
 
   // Conditionally apply temperature scaling
   if (temp_comp) {
@@ -359,20 +329,36 @@ float convert_ads1115_val_to_irradiance(int16_t ads1115_val,
   scaled_photodiode_millivolts =
     photodiode_millivolts * temp_scaling;
 
-  // Next conditionally apply an adjustment for an empirically observed
-  // error in the photodiode sensitivity, where it reads slightly low at
-  // higher irradiances and slightly high at lower irradiances.
-  if (adjust) {
-    adjusted_millivolts = (scaled_photodiode_millivolts *
-                           (1.0 + (scaled_photodiode_millivolts -
-                                   PHOTODIODE_NOMINAL_MV) *
-                            PHOTODIODE_ADJ_PPM / 1000000.0));
-  } else {
-    adjusted_millivolts = scaled_photodiode_millivolts;
-  }
-
   // Then convert millivolts to irradiance
-  w_per_m_squared = adjusted_millivolts * PYRANO_CAL;
+  //
+  // Polynomial curve:
+  //
+  //   y = Ax^2 + Bx
+  //
+  //   x: scaled_photodiode_millivolts
+  //   A: PYRANO_CAL_A
+  //   B: PYRANO_CAL
+  //   y: w_per_m_squared (irradiance)
+  //
+  // If A is 0, scaling is linear.  Intercept is always zero.
+  //
+  w_per_m_squared = ((PYRANO_CAL_A *
+                      scaled_photodiode_millivolts *
+                      scaled_photodiode_millivolts) +
+                     (PYRANO_CAL *
+                      scaled_photodiode_millivolts));
 
   return w_per_m_squared;
+}
+
+float convert_ads1115_val_to_millivolts(int16_t ads1115_val) {
+  int max_millivolts;
+  float photodiode_millivolts;
+
+  max_millivolts = (ADS1115_UNITY_GAIN_MAX_MILLIVOLTS /
+                    ADS1115_PGA_GAIN_PDB_C139);
+  photodiode_millivolts =
+    max_millivolts * (float(abs(ads1115_val)) / ADS1115_MIN_VALUE);
+
+  return photodiode_millivolts;
 }
